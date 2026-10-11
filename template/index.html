@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Placement predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f5f9;
+    --surface: #ffffff;
+    --ink: #121a33;
+    --muted: #5d6781;
+    --line: #dce1ec;
+    --accent: #3d4dff;
+    --accent-ink: #ffffff;
+    --bad: #c23b1e;
+    --pane: #101a3a;
+    --pane-ink: #eef1fb;
+    --pane-muted: #9ba6c9;
+    --pane-line: rgba(255, 255, 255, .14);
+    --good-pane: #49e0a1;
+    --bad-pane: #ff8a6b;
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1020;
+      --surface: #131a30;
+      --ink: #e9ecf6;
+      --muted: #98a2bf;
+      --line: #262f4b;
+      --accent: #7f8cff;
+      --accent-ink: #0b1020;
+      --bad: #ff8a6b;
+      --pane: #17214a;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.55;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  /* ---------- top bar ---------- */
+  .topbar { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 30px; flex-wrap: wrap; }
+  h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.08; margin: 0 0 10px; font-weight: 800; letter-spacing: -0.03em; }
+  .topbar p { margin: 0; color: var(--muted); max-width: 56ch; }
+  .status {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500;
+    padding: 7px 13px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--muted);
+  }
+  .status i { width: 8px; height: 8px; border-radius: 50%; background: #9aa3b8; }
+  .status[data-s="online"] i { background: #1fa971; }
+  .status[data-s="offline"] i { background: var(--bad); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 36px; align-items: start; }
+
+  /* ---------- examples ---------- */
+  .examples { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 26px; }
+  .examples span { color: var(--muted); font-size: 14px; margin-right: 4px; }
+  .chip {
+    font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    padding: 7px 14px; border-radius: 99px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line);
+  }
+  .chip:hover { border-color: var(--accent); }
+
+  /* ---------- form ---------- */
+  fieldset { border: 0; border-top: 1px solid var(--line); margin: 0; padding: 24px 0 6px; min-width: 0; }
+  fieldset.first { border-top: 0; padding-top: 0; }
+  legend { padding: 0; font-weight: 700; font-size: 17px; margin-bottom: 16px; letter-spacing: -0.01em; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 28px; }
+  .field { margin-bottom: 20px; min-width: 0; }
+  .field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  label, .label { font-weight: 600; font-size: 14px; }
+  .help { display: block; font-weight: 400; font-size: 12.5px; color: var(--muted); }
+
+  .num { display: inline-flex; align-items: baseline; gap: 4px; color: var(--muted); font-size: 13px; }
+  .num input {
+    width: 4.4em; text-align: right; font: inherit; font-weight: 700; font-size: 15px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px;
+    -moz-appearance: textfield;
+  }
+  .num input::-webkit-outer-spin-button, .num input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .num input:invalid { border-color: var(--bad); color: var(--bad); }
+
+  input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; cursor: pointer; }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  select {
+    width: 100%; font: inherit; font-weight: 500; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px;
+  }
+
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { padding: 9px 22px; cursor: pointer; font-weight: 600; border-right: 1px solid var(--line); color: var(--muted); }
+  .seg label:last-of-type { border-right: 0; }
+  .seg input:checked + label { background: var(--accent); color: var(--accent-ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: -3px; }
+
+  .actions { display: flex; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .btn { font: inherit; font-weight: 700; border-radius: 10px; padding: 13px 26px; cursor: pointer; border: 1px solid transparent; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn.primary:disabled { opacity: .65; cursor: progress; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+
+  /* ---------- result pane ---------- */
+  .pane {
+    position: sticky; top: 20px; background: var(--pane); color: var(--pane-ink);
+    border-radius: 16px; padding: 28px 26px 24px; --tone: var(--pane-muted);
+  }
+  .pane[data-state="placed"] { --tone: var(--good-pane); }
+  .pane[data-state="not-placed"] { --tone: var(--bad-pane); }
+  .pane[data-state="error"] { --tone: var(--bad-pane); }
+  .pane h2 { margin: 0 0 20px; font-size: 14px; font-weight: 600; color: var(--pane-muted); }
+
+  .ring-wrap { position: relative; width: 168px; height: 168px; margin: 0 auto 18px; }
+  .ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 11; }
+  .ring .track { stroke: var(--pane-line); }
+  .ring .arc { stroke: var(--tone); stroke-linecap: round; stroke-dasharray: 377; stroke-dashoffset: 377; transition: stroke-dashoffset .9s cubic-bezier(.2, .7, .2, 1), stroke .3s; }
+  .ring-center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+  .ring-center strong { font-size: 40px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+  .ring-center small { color: var(--pane-muted); font-size: 12px; margin-top: 4px; }
+
+  .verdict { text-align: center; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--tone); margin: 0 0 8px; }
+  .msg { text-align: center; color: var(--pane-muted); margin: 0 auto; max-width: 30ch; font-size: 14px; }
+
+  .compare { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--pane-line); }
+  .compare h3 { margin: 0 0 14px; font-size: 13px; font-weight: 600; color: var(--pane-muted); }
+  .cmp-row { margin-bottom: 13px; }
+  .cmp-top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; gap: 8px; }
+  .cmp-top span:last-child { color: var(--pane-muted); }
+  .cmp-top b { color: var(--pane-ink); }
+  .cmp-track { position: relative; height: 6px; border-radius: 99px; background: var(--pane-line); }
+  .cmp-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: var(--tone); transition: width .6s ease; }
+  .cmp-track u { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--pane-ink); border-radius: 2px; }
+  .legend { font-size: 12px; color: var(--pane-muted); margin-top: 6px; }
+  .legend u { display: inline-block; width: 2px; height: 10px; background: var(--pane-ink); margin-right: 6px; vertical-align: -1px; }
+  .fine { font-size: 12px; color: var(--pane-muted); margin: 18px 0 0; text-align: center; }
+
+  @media (max-width: 880px) {
+    .layout { grid-template-columns: 1fr; gap: 30px; }
+    .pane { position: static; }
+  }
+  @media (max-width: 520px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .actions .btn { flex: 1; padding-inline: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ring .arc, .cmp-track i { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="topbar">
+    <div>
+      <h1>Placement predictor</h1>
+      <p>Enter a student's details. A decision-tree model trained on past student records estimates whether the student will be placed.</p>
+    </div>
+    <div class="status" id="status" data-s="unknown" role="status"><i></i><span>Checking API</span></div>
+  </div>
+
+  <div class="layout">
+    <form id="form" novalidate>
+      <div class="examples">
+        <span>Start from an example:</span>
+        <button type="button" class="chip" data-preset="strong">Strong profile</button>
+        <button type="button" class="chip" data-preset="average">Average profile</button>
+        <button type="button" class="chip" data-preset="weak">Needs support</button>
+      </div>
+
+      <fieldset class="first">
+        <legend>About the student</legend>
+        <div class="grid-2">
+          <div class="field">
+            <span class="label" id="gender-label">Gender</span><br>
+            <div class="seg" role="radiogroup" aria-labelledby="gender-label" style="margin-top:8px">
+              <input type="radio" name="gender" id="g-male" value="Male" checked><label for="g-male">Male</label>
+              <input type="radio" name="gender" id="g-female" value="Female"><label for="g-female">Female</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="branch">Branch</label>
+            <select id="branch" name="branch" style="margin-top:8px">
+              <option value="CSE">CSE</option>
+              <option value="IT">IT</option>
+              <option value="ECE">ECE</option>
+              <option value="Mechanical">Mechanical</option>
+              <option value="Civil">Civil</option>
+              <option value="Commerce">Commerce</option>
+            </select>
+          </div>
+          <div class="field">
+            <span class="label" id="extra-label">Takes part in extracurriculars</span><br>
+            <div class="seg" role="radiogroup" aria-labelledby="extra-label" style="margin-top:8px">
+              <input type="radio" name="extracurricular" id="e-yes" value="Yes" checked><label for="e-yes">Yes</label>
+              <input type="radio" name="extracurricular" id="e-no" value="No"><label for="e-no">No</label>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Daily habits</legend>
+        <div id="habits"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Academic record</legend>
+        <div id="academics"></div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" class="btn primary" id="submit">Predict placement</button>
+        <button type="button" class="btn ghost" id="reset">Reset</button>
+      </div>
+    </form>
+
+    <aside class="pane" id="pane" data-state="idle" aria-live="polite">
+      <h2>Prediction</h2>
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 140 140" aria-hidden="true">
+          <circle class="track" cx="70" cy="70" r="60"></circle>
+          <circle class="arc" id="arc" cx="70" cy="70" r="60"></circle>
+        </svg>
+        <div class="ring-center"><strong id="ring-value">--</strong><small id="ring-label">chance of placement</small></div>
+      </div>
+      <div class="verdict" id="verdict">Waiting for details</div>
+      <p class="msg" id="msg">Fill in the form and select Predict placement to see the result.</p>
+
+      <div class="compare" id="compare" hidden>
+        <h3>How this student compares</h3>
+        <div id="cmp-rows"></div>
+        <div class="legend"><u></u>Average of placed students in the training data</div>
+      </div>
+      <p class="fine" id="fine" hidden>A model estimate from past data, not a guarantee.</p>
+    </aside>
+  </div>
+</div>
+
+<script>
+  // Where the FastAPI server lives.
+  // "" = the same server that serves this page (recommended).
+  // If you open this file on its own, use e.g. "http://127.0.0.1:8000".
+  const API_URL = "";
+
+  // avg = mean of placed students (from the notebook), scale = value that fills the bar
+  const habits = [
+    { id: "study_hours",    label: "Study hours per day",  min: 0, max: 12,  step: 0.1, value: 3.5, unit: "h", avg: 4.11, scale: 10 },
+    { id: "sleep_hours",    label: "Sleep hours per day",  min: 3, max: 12,  step: 0.1, value: 7,   unit: "h" },
+    { id: "internet_usage", label: "Internet use per day", min: 0, max: 12,  step: 0.1, value: 4.5, unit: "h", avg: 4.02, scale: 10 },
+  ];
+  const academics = [
+    { id: "attendance",            label: "Attendance",            min: 0, max: 100, step: 0.1, value: 75, unit: "%", avg: 81.25, scale: 100 },
+    { id: "assignments_completed", label: "Assignments completed", min: 0, max: 30,  step: 1,   value: 13, unit: "",  avg: 15.30, scale: 25 },
+    { id: "previous_score",        label: "Previous exam score",   min: 0, max: 100, step: 0.1, value: 62, unit: "",  avg: 69.51, scale: 100 },
+    { id: "exam_score",            label: "Latest exam score",     min: 0, max: 100, step: 0.1, value: 60, unit: "",  avg: 69.70, scale: 100 },
+  ];
+  const numericFields = [...habits, ...academics];
+
+  const presets = {
+    strong:  { gender: "Male",   branch: "CSE",      extracurricular: "Yes", study_hours: 5,   sleep_hours: 7,   internet_usage: 3.5, attendance: 90, assignments_completed: 19, previous_score: 78, exam_score: 80 },
+    average: { gender: "Female", branch: "IT",       extracurricular: "Yes", study_hours: 3.5, sleep_hours: 7,   internet_usage: 4.5, attendance: 76, assignments_completed: 13, previous_score: 62, exam_score: 60 },
+    weak:    { gender: "Male",   branch: "Mechanical", extracurricular: "No", study_hours: 1.5, sleep_hours: 6.5, internet_usage: 6.5, attendance: 58, assignments_completed: 6,  previous_score: 45, exam_score: 42 },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const form = $("form"), pane = $("pane"), submitBtn = $("submit");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ---------- build numeric fields ---------- */
+  function buildField(f) {
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    wrap.innerHTML = `
+      <div class="field-head">
+        <label for="${f.id}">${f.label}</label>
+        <span class="num">
+          <input type="number" id="${f.id}" name="${f.id}" min="${f.min}" max="${f.max}" step="${f.step}" value="${f.value}" required>
+          ${f.unit ? `<span>${f.unit}</span>` : ""}
+        </span>
+      </div>
+      <input type="range" id="${f.id}-range" min="${f.min}" max="${f.max}" step="${f.step}" value="${f.value}" aria-label="${f.label} slider">`;
+    const num = wrap.querySelector("#" + f.id), range = wrap.querySelector("#" + f.id + "-range");
+    range.addEventListener("input", () => { num.value = range.value; });
+    num.addEventListener("input", () => { if (num.value !== "") range.value = num.value; });
+    return wrap;
+  }
+  habits.forEach(f => $("habits").appendChild(buildField(f)));
+  academics.forEach(f => $("academics").appendChild(buildField(f)));
+
+  function setValues(v) {
+    document.querySelector(`input[name="gender"][value="${v.gender}"]`).checked = true;
+    document.querySelector(`input[name="extracurricular"][value="${v.extracurricular}"]`).checked = true;
+    $("branch").value = v.branch;
+    numericFields.forEach(f => { $(f.id).value = v[f.id]; $(f.id + "-range").value = v[f.id]; });
+  }
+  document.querySelectorAll("[data-preset]").forEach(b =>
+    b.addEventListener("click", () => setValues(presets[b.dataset.preset])));
+
+  /* ---------- result pane ---------- */
+  const CIRC = 377; // 2 * pi * r (r = 60)
+
+  function countUp(el, to) {
+    if (reduceMotion) { el.textContent = to + "%"; return; }
+    const start = performance.now(), dur = 800;
+    (function tick(now) {
+      const t = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(to * (1 - Math.pow(1 - t, 3))) + "%";
+      if (t < 1) requestAnimationFrame(tick);
+    })(start);
+  }
+
+  function renderCompare(payload) {
+    const rows = numericFields.filter(f => f.avg).map(f => {
+      const v = payload[f.id];
+      const w = Math.max(0, Math.min(100, (v / f.scale) * 100));
+      const m = Math.max(0, Math.min(100, (f.avg / f.scale) * 100));
+      return `<div class="cmp-row">
+        <div class="cmp-top"><span>${f.label}</span><span><b>${v}${f.unit}</b> &nbsp;avg ${f.avg}${f.unit}</span></div>
+        <div class="cmp-track"><i style="width:${w}%"></i><u style="left:calc(${m}% - 1px)"></u></div>
+      </div>`;
+    }).join("");
+    $("cmp-rows").innerHTML = rows;
+    $("compare").hidden = false;
+    $("fine").hidden = false;
+  }
+
+  function resetPane() {
+    pane.dataset.state = "idle";
+    $("arc").style.strokeDashoffset = CIRC;
+    $("ring-value").textContent = "--";
+    $("ring-label").textContent = "chance of placement";
+    $("verdict").textContent = "Waiting for details";
+    $("msg").textContent = "Fill in the form and select Predict placement to see the result.";
+    $("compare").hidden = true;
+    $("fine").hidden = true;
+  }
+
+  function showPrediction(data, payload) {
+    const placed = data.prediction === "Placed";
+    const hasProb = typeof data.probability === "number";
+    pane.dataset.state = placed ? "placed" : "not-placed";
+    $("verdict").textContent = placed ? "Placed" : "Not placed";
+    $("msg").textContent = placed
+      ? "The model expects this student to get a placement."
+      : "No placement expected yet. Mock interviews, practice tests and mentoring could help.";
+
+    if (hasProb) {
+      const pct = Math.round(data.probability * 100);
+      $("ring-label").textContent = "chance of placement";
+      $("arc").style.strokeDashoffset = CIRC * (1 - data.probability);
+      countUp($("ring-value"), pct);
+    } else {
+      $("ring-label").textContent = "model result";
+      $("arc").style.strokeDashoffset = 0;
+      $("ring-value").textContent = placed ? "Yes" : "No";
+    }
+    renderCompare(payload);
+    if (window.matchMedia("(max-width: 880px)").matches) {
+      pane.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    }
+  }
+
+  function showError(message) {
+    resetPane();
+    pane.dataset.state = "error";
+    $("ring-value").textContent = "!";
+    $("ring-label").textContent = "no result";
+    $("verdict").textContent = "Something went wrong";
+    $("msg").textContent = message;
+  }
+
+  /* ---------- API status ---------- */
+  function setStatus(s) {
+    const el = $("status");
+    el.dataset.s = s;
+    el.querySelector("span").textContent = s === "online" ? "API connected" : s === "offline" ? "API offline" : "Checking API";
+  }
+  async function checkApi() {
+    try { await fetch(`${API_URL}/health`); setStatus("online"); }  // any HTTP reply means the server is up
+    catch (_) { setStatus("offline"); }
+  }
+  checkApi();
+
+  /* ---------- submit ---------- */
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+
+    const fd = new FormData(form);
+    const payload = { gender: fd.get("gender"), branch: fd.get("branch"), extracurricular: fd.get("extracurricular") };
+    numericFields.forEach(f => { payload[f.id] = parseFloat(fd.get(f.id)); });
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Predicting...";
+    try {
+      const res = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setStatus("online");
+      if (!res.ok) {
+        let detail = `The server replied with status ${res.status}.`;
+        try { const err = await res.json(); if (err.detail) detail = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail); } catch (_) {}
+        throw new Error(detail);
+      }
+      showPrediction(await res.json(), payload);
+    } catch (err) {
+      if (err instanceof TypeError) {
+        setStatus("offline");
+        showError("The API is not reachable. Start the FastAPI server and check API_URL at the top of the script.");
+      } else {
+        showError(err.message);
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Predict placement";
+    }
+  });
+
+  $("reset").addEventListener("click", () => {
+    form.reset();
+    numericFields.forEach(f => { $(f.id + "-range").value = f.value; });
+    resetPane();
+  });
+</script>
+</body>
+</html>
